@@ -3,6 +3,7 @@ sudo: false
 dist: trusty
 script:
   - ./autogen.sh --enable-tests && make && cli/wvtest $WVTEST_ARGS
+  - mkdir build && cd build && cmake .. && cmake --build .
 compiler:
   - clang
   - gcc
