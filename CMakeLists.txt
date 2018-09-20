@@ -58,7 +58,7 @@ add_library(wavpack
 target_compile_definitions(wavpack
     PRIVATE
         $<$<BOOL:${MSVC}>:_CRT_SECURE_NO_WARNINGS>
-        $<$<BOOL:${HAVE___BUILTIN_CLZ}>:_CRT_SECURE_NO_WARNINGS>
+        $<$<BOOL:${HAVE___BUILTIN_CLZ}>:HAVE___BUILTIN_CLZ>
 )
 
 set_target_properties(wavpack PROPERTIES
