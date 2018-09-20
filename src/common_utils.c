@@ -75,7 +75,7 @@ int WavpackGetMode (WavpackContext *wpc)
             mode |= MODE_HIGH;
 
             if ((wpc->config.flags & CONFIG_VERY_HIGH_FLAG) ||
-                (wpc->streams && wpc->streams [0] && wpc->streams [0]->wphdr.version < 0x405))
+                (!wpc->streams.empty() && wpc->streams [0].wphdr.version < 0x405))
                     mode |= MODE_VERY_HIGH;
         }
 
@@ -92,7 +92,7 @@ int WavpackGetMode (WavpackContext *wpc)
             mode |= MODE_MD5;
 
         if ((wpc->config.flags & CONFIG_HYBRID_FLAG) && (wpc->config.flags & CONFIG_DYNAMIC_SHAPING) &&
-            wpc->streams && wpc->streams [0] && wpc->streams [0]->wphdr.version >= 0x407)
+            !wpc->streams.empty() && wpc->streams [0].wphdr.version >= 0x407)
                 mode |= MODE_DNS;
 
 #ifndef NO_TAGS
@@ -170,8 +170,8 @@ int64_t WavpackGetSampleIndex64 (WavpackContext *wpc)
         else if (wpc->streams && wpc->streams [0])
             return wpc->streams [0]->sample_index;
 #else
-        if (wpc->streams && wpc->streams [0])
-            return wpc->streams [0]->sample_index;
+        if (!wpc->streams.empty())
+            return wpc->streams [0].sample_index;
 #endif
     }
 
@@ -262,17 +262,17 @@ double WavpackGetInstantBitrate (WavpackContext *wpc)
     if (wpc && wpc->stream3)
         return WavpackGetAverageBitrate (wpc, TRUE);
 
-    if (wpc && wpc->streams && wpc->streams [0] && wpc->streams [0]->wphdr.block_samples) {
-        double output_time = (double) wpc->streams [0]->wphdr.block_samples / WavpackGetSampleRate (wpc);
+    if (wpc && !wpc->streams.empty() && wpc->streams [0].wphdr.block_samples) {
+        double output_time = (double) wpc->streams [0].wphdr.block_samples / WavpackGetSampleRate (wpc);
         double input_size = 0;
         int si;
 
         for (si = 0; si < wpc->num_streams; ++si) {
-            if (wpc->streams [si]->blockbuff)
-                input_size += ((WavpackHeader *) wpc->streams [si]->blockbuff)->ckSize;
+            if (wpc->streams [si].blockbuff)
+                input_size += ((WavpackHeader *) wpc->streams [si].blockbuff)->ckSize;
 
-            if (wpc->streams [si]->block2buff)
-                input_size += ((WavpackHeader *) wpc->streams [si]->block2buff)->ckSize;
+            if (wpc->streams [si].block2buff)
+                input_size += ((WavpackHeader *) wpc->streams [si].block2buff)->ckSize;
         }
 
         if (output_time > 0.0 && input_size >= 1.0)
@@ -362,13 +362,8 @@ WavpackContext *WavpackCloseFile (WavpackContext *wpc)
     if (wpc->close_callback)
         wpc->close_callback (wpc);
 
-    if (wpc->streams) {
+    if (!wpc->streams.empty()) {
         free_streams (wpc);
-
-        if (wpc->streams [0])
-            free (wpc->streams [0]);
-
-        free (wpc->streams);
     }
 
 #ifdef ENABLE_LEGACY
@@ -528,24 +523,24 @@ void free_streams (WavpackContext *wpc)
     int si = wpc->num_streams;
 
     while (si--) {
-        if (wpc->streams [si]->blockbuff) {
-            free (wpc->streams [si]->blockbuff);
-            wpc->streams [si]->blockbuff = NULL;
+        if (wpc->streams [si].blockbuff) {
+            delete[] (wpc->streams [si].blockbuff);
+            wpc->streams [si].blockbuff = NULL;
         }
 
-        if (wpc->streams [si]->block2buff) {
-            free (wpc->streams [si]->block2buff);
-            wpc->streams [si]->block2buff = NULL;
+        if (wpc->streams [si].block2buff) {
+            delete[] (wpc->streams [si].block2buff);
+            wpc->streams [si].block2buff = NULL;
         }
 
-        if (wpc->streams [si]->sample_buffer) {
-            free (wpc->streams [si]->sample_buffer);
-            wpc->streams [si]->sample_buffer = NULL;
+        if (wpc->streams [si].sample_buffer) {
+            delete[] (wpc->streams [si].sample_buffer);
+            wpc->streams [si].sample_buffer = NULL;
         }
 
-        if (wpc->streams [si]->dc.shaping_data) {
-            free (wpc->streams [si]->dc.shaping_data);
-            wpc->streams [si]->dc.shaping_data = NULL;
+        if (wpc->streams [si].dc.shaping_data) {
+            delete[] (wpc->streams [si].dc.shaping_data);
+            wpc->streams [si].dc.shaping_data = NULL;
         }
 
 #ifdef ENABLE_DSD
@@ -578,8 +573,6 @@ void free_streams (WavpackContext *wpc)
 
         if (si) {
             wpc->num_streams--;
-            free (wpc->streams [si]);
-            wpc->streams [si] = NULL;
         }
     }
 

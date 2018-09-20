@@ -67,6 +67,9 @@ typedef int32_t f32;
 
 #include <stdio.h>
 
+#include <vector>
+#include <string>
+
 #define FALSE 0
 #define TRUE 1
 
@@ -108,11 +111,11 @@ typedef struct {
 
 // This is an internal representation of metadata.
 
-typedef struct {
+struct WavpackMetadata {
     int32_t byte_length;
-    void *data;
+    std::vector<uint8_t> data;
     unsigned char id;
-} WavpackMetadata;
+};
 
 #define ID_UNIQUE               0x3f
 #define ID_OPTIONAL_DATA        0x20
@@ -248,11 +251,12 @@ typedef struct {
     int32_t *sample_buffer;
 
     int64_t sample_index;
-    int bits, num_terms, mute_error, joint_stereo, false_stereo, shift;
+    int bits, num_terms, shift;
+    bool mute_error, joint_stereo, false_stereo;
     int num_decorrs, num_passes, best_decorr, mask_decorr;
     uint32_t crc, crc_x, crc_wvx;
     Bitstream wvbits, wvcbits, wvxbits;
-    int init_done, wvc_skip;
+    bool init_done, wvc_skip;
     float delta_decay;
 
     unsigned char int32_sent_bits, int32_zeros, int32_ones, int32_dups;
@@ -301,7 +305,7 @@ struct WavpackContext {
     uint32_t metabytes;
     int metacount;
 
-    unsigned char *wrapper_data;
+    std::vector<unsigned char> wrapper_data;
     uint32_t wrapper_bytes;
 
     WavpackBlockOutput blockout;
@@ -318,7 +322,7 @@ struct WavpackContext {
     M_Tag m_tag;
 
     int current_stream, num_streams, max_streams, stream_version;
-    WavpackStream **streams;
+    std::vector<WavpackStream> streams;
     void *stream3;
 
     // these items were added in 5.0 to support alternate file types (especially CAF & DSD)
@@ -328,7 +332,7 @@ struct WavpackContext {
     char file_extension [8];
 
     void (*close_callback)(void *wpc);
-    char error_message [80];
+    std::string error_message;
 };
 
 //////////////////////// function prototypes and macros //////////////////////
@@ -392,11 +396,11 @@ void send_general_metadata (WavpackContext *wpc);
 void free_metadata (WavpackMetadata *wpmd);
 int copy_metadata (WavpackMetadata *wpmd, unsigned char *buffer_start, unsigned char *buffer_end);
 double WavpackGetEncodedNoise (WavpackContext *wpc, double *peak);
-int unpack_init (WavpackContext *wpc);
-int read_decorr_terms (WavpackStream *wps, WavpackMetadata *wpmd);
-int read_decorr_weights (WavpackStream *wps, WavpackMetadata *wpmd);
-int read_decorr_samples (WavpackStream *wps, WavpackMetadata *wpmd);
-int read_shaping_info (WavpackStream *wps, WavpackMetadata *wpmd);
+bool unpack_init (WavpackContext &wpc);
+bool read_decorr_terms (WavpackStream &wps, const WavpackMetadata &wpmd);
+bool read_decorr_weights (WavpackStream &wps, const WavpackMetadata &wpmd);
+bool read_decorr_samples (WavpackStream &wps, WavpackMetadata &wpmd);
+bool read_shaping_info (WavpackStream &wps, WavpackMetadata &wpmd);
 int32_t unpack_samples (WavpackContext *wpc, int32_t *buffer, uint32_t sample_count);
 int check_crc_error (WavpackContext *wpc);
 int scan_float_data (WavpackStream *wps, f32 *values, int32_t num_values);
@@ -532,6 +536,7 @@ uint32_t bs_close_read (Bitstream *bs);
 #ifdef HAVE___BUILTIN_CLZ
 #define count_bits(av) ((av) ? 32 - __builtin_clz (av) : 0)
 #elif defined (_WIN64)
+#include <intrin.h>
 static __inline int count_bits (uint32_t av) { unsigned long res; return _BitScanReverse (&res, av) ? (int)(res + 1) : 0; }
 #else
 #define count_bits(av) ( \
@@ -546,8 +551,8 @@ static __inline int count_bits (uint32_t av) { unsigned long res; return _BitSca
 void init_words (WavpackStream *wps);
 void write_entropy_vars (WavpackStream *wps, WavpackMetadata *wpmd);
 void write_hybrid_profile (WavpackStream *wps, WavpackMetadata *wpmd);
-int read_entropy_vars (WavpackStream *wps, WavpackMetadata *wpmd);
-int read_hybrid_profile (WavpackStream *wps, WavpackMetadata *wpmd);
+bool read_entropy_vars (WavpackStream &wps, WavpackMetadata &wpmd);
+bool read_hybrid_profile (WavpackStream &wps, WavpackMetadata &wpmd);
 int32_t FASTCALL send_word (WavpackStream *wps, int32_t value, int chan);
 void send_words_lossless (WavpackStream *wps, int32_t *buffer, int32_t nsamples);
 int32_t FASTCALL get_word (WavpackStream *wps, int chan, int32_t *correction);
@@ -621,7 +626,7 @@ int WavpackGetMD5Sum (WavpackContext *wpc, unsigned char data [16]);
 
 int WavpackVerifySingleBlock (unsigned char *buffer, int verify_checksum);
 uint32_t read_next_header (WavpackStreamReader64 *reader, void *id, WavpackHeader *wphdr);
-int read_wvc_block (WavpackContext *wpc);
+bool read_wvc_block (WavpackContext &wpc);
 
 /////////////////////////// high-level packing API and support ////////////////////////////
 // modules: pack_utils.c, pack_floats.c

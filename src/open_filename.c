@@ -49,6 +49,8 @@
 #include <io.h>
 #endif
 
+#include <new>
+
 #ifdef _WIN32
 #define fileno _fileno
 static FILE *fopen_utf8 (const char *filename_utf8, const char *mode_utf8);
@@ -79,24 +81,24 @@ static int64_t get_pos (void *id)
 static int set_pos_abs (void *id, int64_t pos)
 {
 #ifdef _WIN32
-    return _fseeki64 (id, pos, SEEK_SET);
+    return _fseeki64 (reinterpret_cast<FILE *>(id), pos, SEEK_SET);
 #else
-    return fseek (id, pos, SEEK_SET);
+    return fseek (reinterpret_cast<FILE *>(id), pos, SEEK_SET);
 #endif
 }
 
 static int set_pos_rel (void *id, int64_t delta, int mode)
 {
 #ifdef _WIN32
-    return _fseeki64 (id, delta, mode);
+    return _fseeki64 (reinterpret_cast<FILE *>(id), delta, mode);
 #else
-    return fseek (id, delta, mode);
+    return fseek (reinterpret_cast<FILE *>(id), delta, mode);
 #endif
 }
 
 static int push_back_byte (void *id, int c)
 {
-    return ungetc (c, id);
+    return ungetc (c, reinterpret_cast<FILE *>(id));
 }
 
 #ifdef _WIN32
@@ -113,9 +115,9 @@ static int64_t get_length (void *id)
     if (fHandle == INVALID_HANDLE_VALUE)
         return 0;
 
-    Size.u.LowPart = GetFileSize(fHandle, &Size.u.HighPart);
+    BOOL fRet = GetFileSizeEx(fHandle, &Size);
 
-    if (Size.u.LowPart == INVALID_FILE_SIZE && GetLastError() != NO_ERROR)
+    if (!fRet)
         return 0;
 
     return (int64_t)Size.QuadPart;
@@ -138,7 +140,7 @@ static int64_t get_length (void *id)
 
 static int can_seek (void *id)
 {
-    FILE *file = id;
+    FILE *file = reinterpret_cast<FILE *>(id);
     struct stat statbuf;
 
     return file && !fstat (fileno (file), &statbuf) && S_ISREG(statbuf.st_mode);
@@ -153,7 +155,7 @@ static int32_t write_bytes (void *id, void *data, int32_t bcount)
 
 static int truncate_here (void *id)
 {
-    FILE *file = id;
+    FILE *file = reinterpret_cast<FILE *>(id);
     int64_t curr_pos = _ftelli64 (file);
 
     return _chsize_s (fileno (file), curr_pos);
@@ -248,7 +250,7 @@ WavpackContext *WavpackOpenFileInput (const char *infilename, char *error, int f
     }
 
     if (wv_id != stdin && (flags & OPEN_WVC)) {
-        char *in2filename = malloc (strlen (infilename) + 10);
+        char *in2filename = new(std::nothrow) char[strlen (infilename) + 10];
 
         strcpy (in2filename, infilename);
         strcat (in2filename, "c");

@@ -17,6 +17,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <new>
+#include <algorithm>
+
 #include "wavpack_local.h"
 
 typedef struct {
@@ -31,8 +34,8 @@ typedef struct {
 
 static int32_t raw_read_bytes (void *id, void *data, int32_t bcount)
 {
-    WavpackRawContext *rcxt = id;
-    unsigned char *outptr = data;
+    WavpackRawContext *rcxt = reinterpret_cast<WavpackRawContext *> (id);
+    unsigned char *outptr = reinterpret_cast<unsigned char *> (data);
 
     while (bcount) {
         if (rcxt->ungetc_flag) {
@@ -83,7 +86,7 @@ static int raw_set_pos_rel (void *id, int64_t delta, int mode)
 
 static int raw_push_back_byte (void *id, int c)
 {
-    WavpackRawContext *rcxt = id;
+    WavpackRawContext *rcxt = reinterpret_cast<WavpackRawContext *> (id);
     rcxt->ungetc_char = c;
     rcxt->ungetc_flag = 1;
     return c;
@@ -101,7 +104,7 @@ static int raw_can_seek (void *id)
 
 static int raw_close_stream (void *id)
 {
-    WavpackRawContext *rcxt = id;
+    WavpackRawContext *rcxt = reinterpret_cast<WavpackRawContext *>(id);
     int i;
 
     if (rcxt) {
@@ -140,19 +143,17 @@ WavpackContext *WavpackOpenRawDecoder (
     // if the WavPack data does not contain headers we assume Matroska-style storage
     // and recreate the missing headers
 
-    if (strncmp (main_data, "wvpk", 4)) {
+    if (strncmp (reinterpret_cast<const char *>(main_data), "wvpk", 4)) {
         uint32_t multiple_blocks = 0, block_size, block_samples = 0, wphdr_flags, crc;
         uint32_t main_bytes = main_size, corr_bytes = corr_size;
-        unsigned char *mcp = main_data;
-        unsigned char *ccp = corr_data;
+        unsigned char *mcp = reinterpret_cast<unsigned char *>(main_data);
+        unsigned char *ccp = reinterpret_cast<unsigned char *>(corr_data);
         int msi = 0, csi = 0;
 
-        raw_wv = malloc (sizeof (WavpackRawContext));
-        memset (raw_wv, 0, sizeof (WavpackRawContext));
+        raw_wv = new (std::nothrow) WavpackRawContext ();
 
         if (corr_data && corr_size) {
-            raw_wvc = malloc (sizeof (WavpackRawContext));
-            memset (raw_wvc, 0, sizeof (WavpackRawContext));
+            raw_wvc = new (std::nothrow) WavpackRawContext ();
         }
 
         while (main_bytes >= 12) {
@@ -201,8 +202,7 @@ WavpackContext *WavpackOpenRawDecoder (
                 return NULL;
             }
 
-            wphdr = malloc (sizeof (WavpackHeader));
-            memset (wphdr, 0, sizeof (WavpackHeader));
+            wphdr = new(std::nothrow) WavpackHeader();
             memcpy (wphdr->ckID, "wvpk", 4);
             wphdr->ckSize = sizeof (WavpackHeader) - 8 + block_size;
             SET_TOTAL_SAMPLES (*wphdr, block_samples);
@@ -212,8 +212,13 @@ WavpackContext *WavpackOpenRawDecoder (
             wphdr->crc = crc;
             WavpackLittleEndianToNative (wphdr, WavpackHeaderFormat);
 
+            // raw_wv->num_segments += 2;
+            RawSegment *new_segments = new(std::nothrow) RawSegment[raw_wv->num_segments + 2];
+            std::copy(raw_wv->segments, raw_wv->segments + raw_wv->num_segments, new_segments);
+            delete[] raw_wv->segments;
+            raw_wv->segments = new_segments;
             raw_wv->num_segments += 2;
-            raw_wv->segments = realloc (raw_wv->segments, sizeof (RawSegment) * raw_wv->num_segments);
+            //raw_wv->segments = realloc (raw_wv->segments, sizeof (RawSegment) * raw_wv->num_segments);
             raw_wv->segments [msi].dptr = raw_wv->segments [msi].sptr = (unsigned char *) wphdr;
             raw_wv->segments [msi].eptr = raw_wv->segments [msi].dptr + sizeof (WavpackHeader);
             raw_wv->segments [msi++].free_required = 1;
@@ -247,8 +252,7 @@ WavpackContext *WavpackOpenRawDecoder (
                     return NULL;
                 }
 
-                wphdr = malloc (sizeof (WavpackHeader));
-                memset (wphdr, 0, sizeof (WavpackHeader));
+                wphdr = new(std::nothrow) WavpackHeader();
                 memcpy (wphdr->ckID, "wvpk", 4);
                 wphdr->ckSize = sizeof (WavpackHeader) - 8 + block_size;
                 SET_TOTAL_SAMPLES (*wphdr, block_samples);
@@ -258,8 +262,13 @@ WavpackContext *WavpackOpenRawDecoder (
                 wphdr->crc = crc;
                 WavpackLittleEndianToNative (wphdr, WavpackHeaderFormat);
 
-                raw_wvc->num_segments += 2;
-                raw_wvc->segments = realloc (raw_wvc->segments, sizeof (RawSegment) * raw_wvc->num_segments);
+                //raw_wvc->num_segments += 2;
+                new_segments = new(std::nothrow) RawSegment[raw_wv->num_segments + 2];
+                std::copy(raw_wv->segments, raw_wv->segments + raw_wv->num_segments, new_segments);
+                delete[] raw_wv->segments;
+                raw_wv->segments = new_segments;
+                raw_wv->num_segments += 2;
+                //raw_wvc->segments = realloc (raw_wvc->segments, sizeof (RawSegment) * raw_wvc->num_segments);
                 raw_wvc->segments [csi].dptr = raw_wvc->segments [csi].sptr = (unsigned char *) wphdr;
                 raw_wvc->segments [csi].eptr = raw_wvc->segments [csi].dptr + sizeof (WavpackHeader);
                 raw_wvc->segments [csi++].free_required = 1;
@@ -280,21 +289,19 @@ WavpackContext *WavpackOpenRawDecoder (
     }
     else {      // the case of WavPack blocks with headers is much easier...
         if (main_data) {
-            raw_wv = malloc (sizeof (WavpackRawContext));
-            memset (raw_wv, 0, sizeof (WavpackRawContext));
+            raw_wv = new(std::nothrow) WavpackRawContext();
             raw_wv->num_segments = 1;
-            raw_wv->segments = malloc (sizeof (RawSegment) * raw_wv->num_segments);
-            raw_wv->segments [0].dptr = raw_wv->segments [0].sptr = main_data;
+            raw_wv->segments = new(std::nothrow) RawSegment[raw_wv->num_segments];
+            raw_wv->segments [0].dptr = raw_wv->segments [0].sptr = reinterpret_cast<unsigned char *>(main_data);
             raw_wv->segments [0].eptr = raw_wv->segments [0].dptr + main_size;
             raw_wv->segments [0].free_required = 0;
         }
 
         if (corr_data && corr_size) {
-            raw_wvc = malloc (sizeof (WavpackRawContext));
-            memset (raw_wvc, 0, sizeof (WavpackRawContext));
+            raw_wvc = new(std::nothrow) WavpackRawContext();
             raw_wvc->num_segments = 1;
-            raw_wvc->segments = malloc (sizeof (RawSegment) * raw_wvc->num_segments);
-            raw_wvc->segments [0].dptr = raw_wvc->segments [0].sptr = corr_data;
+            raw_wvc->segments = new(std::nothrow) RawSegment[raw_wv->num_segments];
+            raw_wvc->segments [0].dptr = raw_wvc->segments [0].sptr = reinterpret_cast<unsigned char *>(corr_data);
             raw_wvc->segments [0].eptr = raw_wvc->segments [0].dptr + corr_size;
             raw_wvc->segments [0].free_required = 0;
         }
@@ -307,8 +314,8 @@ WavpackContext *WavpackOpenRawDecoder (
 
 uint32_t WavpackGetNumSamplesInFrame (WavpackContext *wpc)
 {
-    if (wpc && wpc->streams && wpc->streams [0])
-        return wpc->streams [0]->wphdr.block_samples;
+    if (wpc && !wpc->streams.empty())
+        return wpc->streams [0].wphdr.block_samples;
     else
         return -1;
 }

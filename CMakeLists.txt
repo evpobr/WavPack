@@ -16,11 +16,7 @@ check_c_source_compiles("
   HAVE___BUILTIN_CLZ
 )
 
-add_library(wavpack
-    include/wavpack.h
-    src/wavpack_local.h
-    src/wavpack_version.h
-    src/decorr_tables.h
+set(libwavpack_SRCS
     src/common_utils.c
     src/decorr_utils.c
     src/entropy_utils.c
@@ -42,14 +38,24 @@ add_library(wavpack
     src/unpack_seek.c
     src/unpack_utils.c
     src/write_words.c
+)
+if(ENABLE_LEGACY)
+    list(APPEND ${libwavpack_SRCS} src/unpack3.c src/unpack3_open.c)
+endif()
+if(ENABLE_DSD)
+    list(APPEND ${libwavpack_SRCS} src/pack_dsd.c src/unpack_dsd.c)
+endif()
+
+set_source_files_properties(${libwavpack_SRCS} PROPERTIES LANGUAGE CXX)
+
+add_library(wavpack
+    include/wavpack.h
+    src/wavpack_local.h
+    src/wavpack_version.h
+    src/decorr_tables.h
+    ${libwavpack_SRCS}
     $<$<BOOL:${ENABLE_LEGACY}>:
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/unpack3.h
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/unpack3.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/unpack3_open.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/unpack3_open.c>
-    $<$<BOOL:${ENABLE_DSD}>:
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/pack_dsd.c
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/unpack_dsd.c>
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/unpack3.h>
     $<$<AND:$<BOOL:${WIN32}>,$<BOOL:${BUILD_SHARED_LIBS}>>:
         ${CMAKE_CURRENT_SOURCE_DIR}/wavpackdll/resource.h
         ${CMAKE_CURRENT_SOURCE_DIR}/wavpackdll/wavpackdll.rc

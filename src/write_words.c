@@ -27,6 +27,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <new>
+
 #include "wavpack_local.h"
 
 ///////////////////////////// executable code ////////////////////////////////
@@ -101,7 +103,8 @@ void write_entropy_vars (WavpackStream *wps, WavpackMetadata *wpmd)
     unsigned char *byteptr;
     int temp;
 
-    byteptr = wpmd->data = malloc (12);
+    byteptr = new(std::nothrow) uint8_t[12];
+    wpmd->data = reinterpret_cast<void *>(byteptr);
     wpmd->id = ID_ENTROPY_VARS;
 
     *byteptr++ = temp = wp_log2 (wps->w.c [0].median [0]);
@@ -137,7 +140,8 @@ void write_hybrid_profile (WavpackStream *wps, WavpackMetadata *wpmd)
     int temp;
 
     word_set_bitrate (wps);
-    byteptr = wpmd->data = malloc (512);
+    byteptr = new(std::nothrow) uint8_t[512];
+    wpmd->data = reinterpret_cast<void *>(byteptr);
     wpmd->id = ID_HYBRID_PROFILE;
 
     if (wps->wphdr.flags & HYBRID_BITRATE) {
